@@ -1,0 +1,39 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "osv-scan"
+version = "0.1.1"
+description = "Zero-dependency CVE scanner for dependency manifests — wraps the free OSV.dev API"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "Apache-2.0" }
+authors = [{ name = "SpiderCob", email = "dev@spidercob.com" }]
+keywords = ["security", "cve", "dependencies", "osv", "vulnerability"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Security",
+    "Topic :: Software Development :: Libraries",
+]
+
+[project.urls]
+Homepage = "https://github.com/SpiderCob/dep-scanner"
+Repository = "https://github.com/SpiderCob/dep-scanner"
+Issues = "https://github.com/SpiderCob/dep-scanner/issues"
+
+[project.scripts]
+dep-scan = "osv_scan._cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/osv_scan"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
