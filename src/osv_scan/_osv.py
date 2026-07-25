@@ -1,6 +1,8 @@
-"""OSV.dev API client for dep-scanner.
+"""OSV.dev API client for osv-scan.
 
-Uses the batch query endpoint to check multiple packages in one request.
+Uses the batch query endpoint to discover vuln IDs, then fetches full
+details from the individual /vulns/{id} endpoint (OSV changed the batch
+response to return minimal data only).
 No API key required — OSV.dev is free and open.
 """
 from __future__ import annotations
@@ -11,6 +13,7 @@ from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 OSV_BATCH_URL = "https://api.osv.dev/v1/querybatch"
+OSV_VULN_URL  = "https://api.osv.dev/v1/vulns/{id}"
 BATCH_SIZE = 100          # OSV hard limit is 1000; we use 100 for safety
 TIMEOUT = 30              # seconds
 
@@ -93,6 +96,33 @@ def _parse_vuln(raw: Dict[str, Any]) -> Dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
+# Individual vuln fetch
+# ---------------------------------------------------------------------------
+
+def _fetch_vuln(vuln_id: str) -> Dict[str, Any]:
+    """Fetch full vulnerability details from OSV /vulns/{id}."""
+    url = OSV_VULN_URL.format(id=vuln_id)
+    req = Request(
+        url,
+        headers={
+            "Accept": "application/json",
+            "User-Agent": "osv-scan/0.1.2 (https://github.com/SpiderCob/osv-scan)",
+        },
+    )
+    try:
+        with urlopen(req, timeout=TIMEOUT) as resp:
+            return json.loads(resp.read().decode())
+    except (HTTPError, URLError):
+        return {"id": vuln_id}   # fall back to minimal data on error
+
+
+def _fetch_vulns(vuln_ids: List[str]) -> Dict[str, Dict[str, Any]]:
+    """Fetch full details for a list of vuln IDs, deduplicating first."""
+    unique_ids: List[str] = list(dict.fromkeys(vuln_ids))
+    return {vid: _fetch_vuln(vid) for vid in unique_ids}
+
+
+# ---------------------------------------------------------------------------
 # Batch query
 # ---------------------------------------------------------------------------
 
@@ -113,7 +143,8 @@ def query_batch(packages: List[Dict[str, str]]) -> List[List[Dict[str, Any]]]:
     if not packages:
         return []
 
-    all_results: List[List[Dict[str, Any]]] = []
+    # Step 1: batch query to get vuln IDs per package
+    pkg_vuln_ids: List[List[str]] = []
 
     for i in range(0, len(packages), BATCH_SIZE):
         batch = packages[i : i + BATCH_SIZE]
@@ -133,7 +164,7 @@ def query_batch(packages: List[Dict[str, str]]) -> List[List[Dict[str, Any]]]:
             headers={
                 "Content-Type": "application/json",
                 "Accept": "application/json",
-                "User-Agent": "osv-scan/0.1.0 (https://github.com/SpiderCob/osv-scan)",
+                "User-Agent": "osv-scan/0.1.2 (https://github.com/SpiderCob/osv-scan)",
             },
         )
         try:
@@ -145,7 +176,15 @@ def query_batch(packages: List[Dict[str, str]]) -> List[List[Dict[str, Any]]]:
             raise RuntimeError(f"OSV.dev API unreachable: {exc.reason}") from exc
 
         for result in data.get("results") or []:
-            raw_vulns = result.get("vulns") or []
-            all_results.append([_parse_vuln(v) for v in raw_vulns])
+            ids = [v["id"] for v in (result.get("vulns") or []) if v.get("id")]
+            pkg_vuln_ids.append(ids)
 
-    return all_results
+    # Step 2: fetch full details for all unique vuln IDs
+    all_ids = [vid for ids in pkg_vuln_ids for vid in ids]
+    full_vulns = _fetch_vulns(all_ids) if all_ids else {}
+
+    # Step 3: reassemble parallel list matching input packages
+    return [
+        [_parse_vuln(full_vulns[vid]) for vid in ids if vid in full_vulns]
+        for ids in pkg_vuln_ids
+    ]

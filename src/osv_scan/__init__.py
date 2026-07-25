@@ -4,7 +4,7 @@ from __future__ import annotations
 from ._models import PackageFinding, ScanResult, Vulnerability
 from ._scanner import scan, scan_text
 
-__version__ = "0.1.1"
+__version__ = "0.1.2"
 __all__ = [
     "scan",
     "scan_text",
