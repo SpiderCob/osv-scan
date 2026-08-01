@@ -25,9 +25,9 @@ classifiers = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/SpiderCob/dep-scanner"
-Repository = "https://github.com/SpiderCob/dep-scanner"
-Issues = "https://github.com/SpiderCob/dep-scanner/issues"
+Homepage = "https://github.com/SpiderCob/osv-scan"
+Repository = "https://github.com/SpiderCob/osv-scan"
+Issues = "https://github.com/SpiderCob/osv-scan/issues"
 
 [project.scripts]
 dep-scan = "osv_scan._cli:main"

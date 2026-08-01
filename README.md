@@ -137,7 +137,7 @@ data = result.to_dict()
 ```yaml
 # .pre-commit-config.yaml
 repos:
-  - repo: https://github.com/SpiderCob/dep-scanner
+  - repo: https://github.com/SpiderCob/osv-scan
     rev: v0.1.0
     hooks:
       - id: dep-scan
