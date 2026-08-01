@@ -238,6 +238,19 @@ class TestSeverityHelpers(unittest.TestCase):
         }
         self.assertEqual(_extract_fixed_versions(vuln), ["2.31.0"])
 
+    def test_extract_fixed_versions_semver(self):
+        # npm/Go/crates.io use SEMVER ranges, not ECOSYSTEM — regression test
+        # for a bug where these fixed versions were silently dropped.
+        vuln = {
+            "affected": [{
+                "ranges": [{
+                    "type": "SEMVER",
+                    "events": [{"introduced": "0"}, {"fixed": "1.16.0"}],
+                }]
+            }]
+        }
+        self.assertEqual(_extract_fixed_versions(vuln), ["1.16.0"])
+
 
 # ---------------------------------------------------------------------------
 # Model tests
@@ -271,6 +284,29 @@ class TestPackageFinding(unittest.TestCase):
             ]
         )
         self.assertEqual(finding.fix_versions, ["2.30.0", "2.31.0"])
+
+    def test_fix_versions_skips_older_parallel_branch(self):
+        # Regression test: OSV listed fixes on both an old 0.x branch and
+        # the current 1.x branch for axios — the 0.x fix is not a usable
+        # upgrade from 1.13.2 and must not be recommended.
+        finding = PackageFinding(
+            package="axios", version="1.13.2", ecosystem="npm",
+            vulnerabilities=[
+                self._make_vuln("HIGH", ["1.16.0", "0.30.3"]),
+            ]
+        )
+        self.assertEqual(finding.fix_versions, ["1.16.0"])
+
+    def test_fix_versions_falls_back_when_no_upgrade_available(self):
+        # If every listed fix is on a branch older than the installed
+        # version, fall back to reporting them rather than saying "none".
+        finding = PackageFinding(
+            package="legacy-pkg", version="5.0.0", ecosystem="npm",
+            vulnerabilities=[
+                self._make_vuln("HIGH", ["1.2.3"]),
+            ]
+        )
+        self.assertEqual(finding.fix_versions, ["1.2.3"])
 
 
 class TestScanResult(unittest.TestCase):

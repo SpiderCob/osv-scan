@@ -68,10 +68,12 @@ def _extract_fixed_versions(vuln: Dict[str, Any]) -> List[str]:
     fixed: set = set()
     for affected in vuln.get("affected") or []:
         for rng in affected.get("ranges") or []:
-            if rng.get("type") == "ECOSYSTEM":
-                for event in rng.get("events") or []:
-                    if "fixed" in event:
-                        fixed.add(event["fixed"])
+            # "fixed" events carry the same meaning across all range types
+            # (SEMVER, ECOSYSTEM, GIT) — OSV uses SEMVER for npm/Go/crates.io
+            # and ECOSYSTEM for PyPI/Maven, so we can't filter to one type.
+            for event in rng.get("events") or []:
+                if "fixed" in event:
+                    fixed.add(event["fixed"])
     return sorted(fixed)
 
 

@@ -1,6 +1,7 @@
 """Data models for dep-scanner findings."""
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
@@ -44,17 +45,46 @@ class PackageFinding:
                 return sev
         return None
 
+    @staticmethod
+    def _version_key(v: str) -> tuple:
+        """Best-effort numeric key for cross-ecosystem version comparison.
+
+        Numeric segments compare as integers; non-numeric segments (e.g.
+        pre-release suffixes) sort after numeric ones at the same position
+        so unparseable trailing junk doesn't crash comparison.
+        """
+        parts = re.split(r"[.\-+]", v.lstrip("vV"))
+        return tuple((0, int(p)) if p.isdigit() else (1, p) for p in parts)
+
     @property
     def fix_versions(self) -> List[str]:
-        """Unique fix versions across all vulnerabilities, sorted."""
+        """Fix versions across all vulnerabilities, nearest upgrade first.
+
+        OSV often lists fixes for multiple historical branches (e.g. an
+        old 0.x line alongside the current 1.x line) — recommend the
+        smallest fix that is actually an upgrade from the installed
+        version, not just the first version string in sort order, which
+        could otherwise recommend a downgrade to an unrelated branch.
+        """
         seen: set = set()
-        result = []
+        all_fixes: List[str] = []
         for v in self.vulnerabilities:
             for fv in v.fixed_versions:
                 if fv not in seen:
                     seen.add(fv)
-                    result.append(fv)
-        return sorted(result)
+                    all_fixes.append(fv)
+
+        installed_key = self._version_key(self.version)
+        upgrades = sorted(
+            (fv for fv in all_fixes if self._version_key(fv) > installed_key),
+            key=self._version_key,
+        )
+        if upgrades:
+            return upgrades
+        # No listed fix is a strict upgrade from the installed version
+        # (only an older/parallel branch was patched) — fall back to
+        # everything we found rather than reporting no fix at all.
+        return sorted(all_fixes, key=self._version_key)
 
 
 @dataclass
