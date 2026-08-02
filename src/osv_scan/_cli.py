@@ -94,9 +94,10 @@ def _print_result(result, use_json: bool, quiet: bool) -> None:
             parts.append(_c(f"{count} {sev}", sev))
 
     total = sum(len(f.vulnerabilities) for f in result.findings)
+    plural = "s" if total != 1 else ""
     print(
         f"  {' · '.join(parts)}"
-        f"  {_c(f'({total} vuln{"s" if total != 1 else ""} · {result.elapsed_ms}ms)', 'DIM')}\n"
+        f"  {_c(f'({total} vuln{plural} · {result.elapsed_ms}ms)', 'DIM')}\n"
     )
 
 
