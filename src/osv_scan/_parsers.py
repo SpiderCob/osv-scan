@@ -15,6 +15,7 @@ from typing import Dict, List, Optional, Tuple
 # Ecosystem labels used by OSV.dev
 ECOSYSTEM_MAP: Dict[str, str] = {
     "requirements": "PyPI",
+    "pyproject_toml": "PyPI",
     "package_json": "npm",
     "package_lock": "npm",
     "go_mod": "Go",
@@ -41,6 +42,8 @@ def detect_manifest(path: str) -> Optional[str]:
         return "cargo_toml"
     if name == "pom.xml":
         return "pom_xml"
+    if name == "pyproject.toml":
+        return "pyproject_toml"
     # requirements.txt, requirements-dev.txt, requirements/*.txt …
     if "requirements" in name and name.endswith(".txt"):
         return "requirements"
@@ -51,6 +54,19 @@ def detect_manifest(path: str) -> Optional[str]:
 # Individual parsers
 # ---------------------------------------------------------------------------
 
+_PEP508_PIN_RE = re.compile(r"^([A-Za-z0-9_.-]+)(\[[^\]]*\])?\s*==\s*([^\s,;]+)")
+
+
+def _parse_pep508_pin(spec: str) -> Optional[Tuple[str, str]]:
+    """Parse a single PEP 508 requirement string, returning (name, version)
+    only if it's an exact (==) pin — ranges can't be looked up in OSV."""
+    spec = spec.split("#")[0].split(";")[0].strip()
+    m = _PEP508_PIN_RE.match(spec)
+    if not m:
+        return None
+    return m.group(1).lower().replace("_", "-"), m.group(3).strip()
+
+
 def parse_requirements(content: str) -> List[Package]:
     """Parse requirements.txt — only pinned (==) versions."""
     packages: List[Package] = []
@@ -58,11 +74,9 @@ def parse_requirements(content: str) -> List[Package]:
         line = line.strip()
         if not line or line.startswith(("#", "-")):
             continue
-        line = line.split("#")[0].split(";")[0].strip()
-        m = re.match(r"^([A-Za-z0-9_.-]+)\s*==\s*([^\s,]+)", line)
-        if m:
-            name = m.group(1).lower().replace("_", "-")
-            packages.append((name, m.group(2).strip(), "PyPI"))
+        pin = _parse_pep508_pin(line)
+        if pin:
+            packages.append((pin[0], pin[1], "PyPI"))
     return packages
 
 
@@ -205,12 +219,67 @@ def parse_pom_xml(content: str) -> List[Package]:
     return packages
 
 
+def parse_pyproject_toml(content: str) -> List[Package]:
+    """
+    Parse a PEP 621 pyproject.toml's [project.dependencies] and
+    [project.optional-dependencies].* arrays — only pinned (==) entries.
+
+    Does not handle Poetry's [tool.poetry.dependencies] table format
+    (a different structure: name = "version", not an array of strings).
+    """
+    packages: List[Package] = []
+    section = None       # current top-level TOML table, e.g. "project" / "project.optional-dependencies"
+    in_array = False     # currently inside a dependencies array (possibly multi-line)
+
+    for raw_line in content.splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+
+        header = re.match(r"^\[([^\]]+)\]$", line)
+        if header:
+            section = header.group(1)
+            in_array = False
+            continue
+
+        if in_array:
+            for m in re.finditer(r'"([^"]+)"', line):
+                pin = _parse_pep508_pin(m.group(1))
+                if pin:
+                    packages.append((pin[0], pin[1], "PyPI"))
+            if "]" in line:
+                in_array = False
+            continue
+
+        if section not in ("project", "project.optional-dependencies"):
+            continue
+
+        # `dependencies = [...]` under [project], or `<extra> = [...]`
+        # under [project.optional-dependencies] — either may close on the
+        # same line or span multiple lines until the matching `]`.
+        assign = re.match(r"^([A-Za-z0-9_.-]+)\s*=\s*\[(.*)$", line)
+        if not assign:
+            continue
+        if section == "project" and assign.group(1) != "dependencies":
+            continue
+
+        rest = assign.group(2)
+        for m in re.finditer(r'"([^"]+)"', rest):
+            pin = _parse_pep508_pin(m.group(1))
+            if pin:
+                packages.append((pin[0], pin[1], "PyPI"))
+        in_array = "]" not in rest
+
+    return packages
+
+
 # ---------------------------------------------------------------------------
 # Public entry point
 # ---------------------------------------------------------------------------
 
 PARSERS = {
     "requirements": parse_requirements,
+    "pyproject_toml": parse_pyproject_toml,
     "package_json": parse_package_json,
     "package_lock": parse_package_lock,
     "go_mod": parse_go_mod,
@@ -229,8 +298,8 @@ def parse_manifest(path: str) -> Tuple[List[Package], str]:
     if manifest_type is None:
         raise ValueError(
             f"Unrecognised manifest: {path}\n"
-            "Supported: requirements.txt, package.json, package-lock.json, "
-            "go.mod, Cargo.toml, pom.xml"
+            "Supported: requirements.txt, pyproject.toml, package.json, "
+            "package-lock.json, go.mod, Cargo.toml, pom.xml"
         )
     with open(path, encoding="utf-8", errors="replace") as fh:
         content = fh.read()

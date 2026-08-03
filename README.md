@@ -25,11 +25,18 @@ pip install osv-scan
 | File | Ecosystem |
 |---|---|
 | `requirements.txt` | PyPI |
+| `pyproject.toml` | PyPI |
 | `package.json` | npm |
 | `package-lock.json` | npm |
 | `go.mod` | Go |
 | `Cargo.toml` | crates.io |
 | `pom.xml` | Maven |
+
+`pyproject.toml` support covers PEP 621's `[project.dependencies]` and
+`[project.optional-dependencies].*` arrays — like `requirements.txt`, only
+exact (`==`) pins are checked, since a version range can't be looked up in
+OSV. Poetry's `[tool.poetry.dependencies]` table format (a different
+structure) isn't supported.
 
 ---
 

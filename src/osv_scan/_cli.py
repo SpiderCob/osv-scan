@@ -105,7 +105,7 @@ _FAIL_ORDER = {"critical": 0, "high": 1, "medium": 2, "low": 3, "none": 99}
 _SEV_RANK = {"CRITICAL": 0, "HIGH": 1, "MEDIUM": 2, "LOW": 3}
 
 _AUTO_DETECT = [
-    "requirements.txt", "package-lock.json", "package.json",
+    "requirements.txt", "pyproject.toml", "package-lock.json", "package.json",
     "go.mod", "Cargo.toml", "pom.xml",
 ]
 
@@ -115,8 +115,8 @@ def main() -> None:
         prog="dep-scan",
         description=(
             "Scan dependency manifests for known CVEs using OSV.dev.\n"
-            "Supports: requirements.txt, package.json, package-lock.json, "
-            "go.mod, Cargo.toml, pom.xml"
+            "Supports: requirements.txt, pyproject.toml, package.json, "
+            "package-lock.json, go.mod, Cargo.toml, pom.xml"
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )

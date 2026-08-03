@@ -20,6 +20,7 @@ from osv_scan._parsers import (
     parse_package_json,
     parse_package_lock,
     parse_pom_xml,
+    parse_pyproject_toml,
     parse_requirements,
 )
 from osv_scan._osv import _parse_severity, _score_to_sev, _extract_fixed_versions
@@ -54,6 +55,79 @@ class TestParseRequirements(unittest.TestCase):
     def test_unpinned_skipped(self):
         pkgs = parse_requirements("requests>=2.0\nflask\n")
         self.assertEqual(pkgs, [])
+
+
+class TestParsePyprojectToml(unittest.TestCase):
+    def test_single_line_dependencies_array(self):
+        content = textwrap.dedent("""\
+            [project]
+            name = "myproject"
+            dependencies = ["requests==2.27.0", "django>=3.0", "click==8.1.3"]
+        """)
+        pkgs = parse_pyproject_toml(content)
+        self.assertEqual(len(pkgs), 2)
+        self.assertIn(("requests", "2.27.0", "PyPI"), pkgs)
+        self.assertIn(("click", "8.1.3", "PyPI"), pkgs)
+
+    def test_multiline_dependencies_array(self):
+        content = textwrap.dedent("""\
+            [project]
+            name = "myproject"
+            dependencies = [
+                "requests==2.27.0",
+                "django>=3.0",
+                "flask==2.3.1",
+            ]
+
+            [project.urls]
+            Homepage = "https://example.com"
+        """)
+        pkgs = parse_pyproject_toml(content)
+        self.assertEqual(len(pkgs), 2)
+        self.assertIn(("requests", "2.27.0", "PyPI"), pkgs)
+        self.assertIn(("flask", "2.3.1", "PyPI"), pkgs)
+
+    def test_optional_dependencies(self):
+        content = textwrap.dedent("""\
+            [project]
+            name = "myproject"
+            dependencies = ["requests==2.27.0"]
+
+            [project.optional-dependencies]
+            dev = ["pytest==7.4.0", "black>=23.0"]
+            ml = [
+                "setfit>=0.7",
+                "torch==2.1.0",
+            ]
+        """)
+        pkgs = parse_pyproject_toml(content)
+        self.assertIn(("requests", "2.27.0", "PyPI"), pkgs)
+        self.assertIn(("pytest", "7.4.0", "PyPI"), pkgs)
+        self.assertIn(("torch", "2.1.0", "PyPI"), pkgs)
+        self.assertNotIn(("black", "23.0", "PyPI"), pkgs)
+
+    def test_extras_and_underscore_normalised(self):
+        content = '[project]\ndependencies = ["My_Package[extra1,extra2]==1.0.0"]\n'
+        pkgs = parse_pyproject_toml(content)
+        self.assertEqual(pkgs, [("my-package", "1.0.0", "PyPI")])
+
+    def test_no_dependencies_key(self):
+        content = textwrap.dedent("""\
+            [project]
+            name = "myproject"
+            version = "1.0.0"
+        """)
+        self.assertEqual(parse_pyproject_toml(content), [])
+
+    def test_poetry_style_table_not_parsed_as_array(self):
+        # [tool.poetry.dependencies] is a different (unsupported) format —
+        # must not crash or misparse it as an array.
+        content = textwrap.dedent("""\
+            [tool.poetry.dependencies]
+            python = "^3.9"
+            requests = "^2.27.0"
+        """)
+        self.assertEqual(parse_pyproject_toml(content), [])
 
 
 class TestParsePackageJson(unittest.TestCase):
@@ -186,6 +260,7 @@ class TestDetectManifest(unittest.TestCase):
         cases = {
             "requirements.txt": "requirements",
             "requirements-dev.txt": "requirements",
+            "pyproject.toml": "pyproject_toml",
             "package.json": "package_json",
             "package-lock.json": "package_lock",
             "go.mod": "go_mod",
