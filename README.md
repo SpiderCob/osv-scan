@@ -1,5 +1,7 @@
 # dep-scanner
 
+> Part of **[Spidercob](https://github.com/SpiderCob/spidercob-gateway)**, open-source guardrails for AI agents.
+
 Zero-dependency Python library that scans your dependency manifests for known CVEs using the free [OSV.dev](https://osv.dev) API.
 
 No API key. No signup. No rate limits for normal use.
